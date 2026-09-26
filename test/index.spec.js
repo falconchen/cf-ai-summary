@@ -37,6 +37,10 @@ function createEnv({ articles = [], counters = [] } = {}) {
         async first(column) {
           const [key] = bindings
           if (sql.includes('SELECT content FROM blog_summary')) {
+            if (sql.includes('LIMIT 1')) {
+              const row = articleRows.get(key)
+              return row ? { content: row.content } : null
+            }
             return articleRows.get(key)?.content ?? null
           }
           if (sql.includes('SELECT summary FROM blog_summary')) {
@@ -68,11 +72,36 @@ function createEnv({ articles = [], counters = [] } = {}) {
             if (row) row.summary = summary
             return { success: true }
           }
+          if (sql.includes('UPDATE blog_summary SET content')) {
+            const [content, id] = bindings
+            const row = articleRows.get(id)
+            if (row) {
+              row.content = content
+              row.summary = null
+            }
+            return { success: true }
+          }
+          if (sql.includes('UPDATE counter SET')) {
+            const [url] = bindings
+            if (counterRows.has(url)) counterRows.set(url, counterRows.get(url) + 1)
+            return { success: true }
+          }
+          if (sql.includes('INSERT INTO counter')) {
+            const [url] = bindings
+            if (!counterRows.has(url)) counterRows.set(url, 1)
+            return { success: true }
+          }
           throw new Error(`Unexpected run() query: ${sql}`)
         },
       }
       return statement
     },
+  }
+
+  DB.batch = async (statements) => {
+    const results = []
+    for (const statement of statements) results.push(await statement.run())
+    return results
   }
 
   return { DB, AI, articleRows, counterRows }
@@ -95,7 +124,7 @@ describe('Hono summary worker', () => {
     expect(redirect.headers.get('location')).toBe('https://www.google.com')
   })
 
-  it('uploads content and clears a cached summary only when content changes', async () => {
+  it('uploads content without relying on a unique id constraint and clears changed summaries', async () => {
     const env = createEnv({ articles: [['article-1', 'old content', 'old summary']] })
     const upload = (content) => worker.fetch(request('/upload_blog?id=article-1', {
       method: 'POST',

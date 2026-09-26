@@ -129,19 +129,21 @@ app.get('/is_uploaded', async (c) => {
 app.post('/upload_blog', async (c) => {
   const id = getQueryId(c)
   const content = await c.req.text()
+  const existingArticle = await c.env.DB.prepare(
+    'SELECT content FROM blog_summary WHERE id = ?1 LIMIT 1',
+  )
+    .bind(id)
+    .first()
 
-  await c.env.DB.prepare(`
-    INSERT INTO blog_summary (id, content, summary)
-    VALUES (?1, ?2, NULL)
-    ON CONFLICT(id) DO UPDATE SET
-      summary = CASE
-        WHEN blog_summary.content IS NOT excluded.content THEN NULL
-        ELSE blog_summary.summary
-      END,
-      content = excluded.content
-  `)
-    .bind(id, content)
-    .run()
+  if (!existingArticle) {
+    await c.env.DB.prepare('INSERT INTO blog_summary (id, content) VALUES (?1, ?2)')
+      .bind(id, content)
+      .run()
+  } else if (existingArticle.content !== content) {
+    await c.env.DB.prepare('UPDATE blog_summary SET content = ?1, summary = NULL WHERE id = ?2')
+      .bind(content, id)
+      .run()
+  }
 
   return c.text('OK')
 })
@@ -158,12 +160,21 @@ app.get('/count_click', async (c) => {
 
 app.get('/count_click_add', async (c) => {
   const idHash = await md5(getQueryId(c))
-  const count = await c.env.DB.prepare(`
-    INSERT INTO counter (url, counter)
-    VALUES (?1, 1)
-    ON CONFLICT(url) DO UPDATE SET counter = COALESCE(counter.counter, 0) + 1
-    RETURNING counter
-  `)
+
+  // The existing production tables have no unique constraint on `url`; use a
+  // transaction batch that increments any existing rows or inserts the first.
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE counter SET counter = COALESCE(counter, 0) + 1 WHERE url = ?1')
+      .bind(idHash),
+    c.env.DB.prepare(`
+      INSERT INTO counter (url, counter)
+      SELECT ?1, 1
+      WHERE NOT EXISTS (SELECT 1 FROM counter WHERE url = ?1)
+    `)
+      .bind(idHash),
+  ])
+
+  const count = await c.env.DB.prepare('SELECT counter FROM counter WHERE url = ?1 LIMIT 1')
     .bind(idHash)
     .first('counter')
   return c.text(String(count ?? 0))

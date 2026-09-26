@@ -18,6 +18,6 @@ Before deployment, check that `main` in `wrangler.toml` points to the intended W
 
 ## Hono worker
 
-The configured entry point is `src/hono.js`. It provides `/summary`, `/get_summary`, `/is_uploaded`, `/upload_blog`, `/count_click`, and `/count_click_add`, while retaining the root diagnostic response and redirect for unknown paths. The D1 tables are defined in `schema.sql`; apply it to a local database before local development with `wrangler d1 execute blog_summary --local --file schema.sql`.
+The configured entry point is `src/hono.js`. It provides `/summary`, `/get_summary`, `/is_uploaded`, `/upload_blog`, `/count_click`, and `/count_click_add`, while retaining the root diagnostic response and redirect for unknown paths. Upload and counter writes work with both the indexed schema in `schema.sql` and the existing production tables, which do not have unique constraints. The D1 tables are defined in `schema.sql`; apply it to a local database before local development with `wrangler d1 execute blog_summary --local --file schema.sql`.
 
 Run `npm test -- --run` for route tests. Run `wrangler dev` to exercise the Worker against local D1 and Cloudflare Workers AI; AI calls made during local development consume the account's Workers AI allowance. The tests mock D1 and AI, so they do not make paid model calls.
