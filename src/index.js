@@ -94,10 +94,10 @@ export default {
             你的回答格式应该如下：
               本文介绍了<这里是内容>
           ` },
-        { role: "user", content: result.substring(0, 5000) }
+        { role: "user", content: `${result.substring(0, 5000)}\n/no_think` }
       ]
 
-      const stream = await env.AI.run('@cf/qwen/qwen1.5-14b-chat-awq', {
+      const stream = await env.AI.run('@cf/qwen/qwen3-30b-a3b-fp8', {
         messages,
         stream: true,
       });
@@ -154,14 +154,17 @@ export default {
             你的回答格式应该如下：
               这篇文章介绍了<这里是内容>
           ` },
-            { role: "user", content: result.substring(0, 5000) }
+            { role: "user", content: `${result.substring(0, 5000)}\n/no_think` }
           ]
 
-          const answer = await env.AI.run('@cf/qwen/qwen1.5-14b-chat-awq', {
+          const answer = await env.AI.run('@cf/qwen/qwen3-30b-a3b-fp8', {
             messages,
             stream: false,
           });
-          resp = answer.response
+          resp = answer.response?.trim();
+          if (!resp) {
+            throw new Error("Qwen3 returned an empty summary");
+          }
           await db.prepare("UPDATE blog_summary SET summary = ?1 WHERE id = ?2")
             .bind(resp, query).run();
           return new Response(resp, {
